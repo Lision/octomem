@@ -47,8 +47,12 @@ program
 
           const result = await agent.format({ content });
 
+          // Write formatted content to completed directory
           await workspaceManager.writeCompletedFile(workspace, filename, result.content);
-          await workspaceManager.moveToCompleted(workspace, filename);
+
+          // Delete the original file from processing directory
+          const { unlink } = await import('fs/promises');
+          await unlink(`${workspace.processing}/${filename}`);
 
           console.log(`Completed: ${filename}`);
         }
