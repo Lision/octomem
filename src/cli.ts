@@ -47,14 +47,17 @@ program
 
           const result = await agent.format({ content });
 
-          // Write formatted content to completed directory
-          await workspaceManager.writeCompletedFile(workspace, filename, result.content);
+          // Convert filename to .md extension
+          const mdFilename = filename.replace(/\.[^.]+$/, '.md');
+
+          // Write formatted content to completed directory with .md extension
+          await workspaceManager.writeCompletedFile(workspace, mdFilename, result.content);
 
           // Delete the original file from processing directory
           const { unlink } = await import('fs/promises');
           await unlink(`${workspace.processing}/${filename}`);
 
-          console.log(`Completed: ${filename}`);
+          console.log(`Completed: ${filename} → ${mdFilename}`);
         }
 
         console.log(`\nAll ${files.length} file(s) processed.`);
