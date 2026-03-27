@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { Agent } from '@mariozechner/pi-agent-core';
-import { getModel } from '@mariozechner/pi-ai';
+import type { Model } from '@mariozechner/pi-ai';
 import { FORMATTER_SYSTEM_PROMPT, buildFormatterPrompt } from './prompts.js';
 import type { FormatterInput, FormatterOutput } from './types.js';
 
@@ -18,18 +18,49 @@ const MARKDOWN_PATTERNS = [
 ];
 
 /**
+ * Create model configuration from environment variables.
+ *
+ * Supports any OpenAI-compatible LLM provider.
+ * Set LLM_BASE_URL and LLM_MODEL for custom providers.
+ * Falls back to OpenAI defaults if not configured.
+ *
+ * Note: Always uses provider="openai" for OpenAI-compatible APIs.
+ * Set OPENAI_API_KEY to your provider's API key.
+ */
+function createModelConfig(): Model<"openai-completions"> {
+  const hasCustomLlm = Boolean(process.env.LLM_BASE_URL);
+
+  return {
+    id: hasCustomLlm ? (process.env.LLM_MODEL || 'default') : 'gpt-4o-mini',
+    name: hasCustomLlm ? (process.env.LLM_MODEL || 'default') : 'gpt-4o-mini',
+    api: "openai-completions",
+    provider: "openai",  // Use "openai" for OpenAI-compatible APIs
+    baseUrl: hasCustomLlm
+      ? process.env.LLM_BASE_URL!
+      : "https://api.openai.com/v1",
+    reasoning: false,
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 128000,
+    maxTokens: 4096,
+  };
+}
+
+/**
  * Formatter Agent - converts various input formats to structured markdown.
  *
- * Uses a small model (gpt-4o-mini) for cost efficiency.
+ * Uses a small model for cost efficiency.
  */
 export class FormatterAgent {
   private agent: Agent;
 
   constructor() {
+    const model = createModelConfig();
+
     this.agent = new Agent({
       initialState: {
         systemPrompt: FORMATTER_SYSTEM_PROMPT,
-        model: getModel('openai', 'gpt-4o-mini'),
+        model: model,
         tools: [],  // MVP doesn't need tools
         messages: [],
         thinkingLevel: 'off',  // Formatting doesn't need extended thinking
