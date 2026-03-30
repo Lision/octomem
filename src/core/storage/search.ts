@@ -217,7 +217,8 @@ export class SearchEngine {
         `SELECT fts.id, fts.memory_id, fts.text,
                 bm25(segments_fts) AS rank
          FROM segments_fts fts
-         WHERE fts.memory_id IN (SELECT id FROM memories WHERE status = 'active')
+         WHERE segments_fts MATCH ?
+           AND fts.memory_id IN (SELECT id FROM memories WHERE status = 'active')
          ORDER BY rank ASC
          LIMIT ?`,
       )

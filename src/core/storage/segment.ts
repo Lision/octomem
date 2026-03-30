@@ -34,6 +34,10 @@ export function segmentMarkdown(
   content: string,
   config: SegmentConfig = DEFAULT_SEGMENT_CONFIG,
 ): Omit<Segment, 'id' | 'memoryId' | 'embedding' | 'createdAt'>[] {
+  if (!content) {
+    return [];
+  }
+
   const lines = content.split('\n');
   if (lines.length === 0) {
     return [];
