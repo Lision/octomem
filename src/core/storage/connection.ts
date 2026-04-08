@@ -17,6 +17,15 @@ export async function openConnection(params: {
   dbPath: string;
   tryLoadVec?: boolean;
 }): Promise<ConnectionResult> {
+  const { mkdirSync, existsSync } = await import('node:fs');
+  const { dirname } = await import('node:path');
+
+  // Ensure parent directory exists
+  const dir = dirname(params.dbPath);
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+
   const { DatabaseSync } = await import('node:sqlite');
   const db = new DatabaseSync(params.dbPath);
 
