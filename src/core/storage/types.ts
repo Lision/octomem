@@ -3,7 +3,7 @@
  */
 
 /** Memory status lifecycle */
-export type MemoryStatus = 'active' | 'superseded' | 'conflict';
+export type MemoryStatus = 'active' | 'superseded' | 'conflict' | 'gap' | 'archived';
 
 /** Conflict resolution type */
 export type ResolutionType = 'programmatic' | 'llm' | 'manual';

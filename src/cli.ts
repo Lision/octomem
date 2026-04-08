@@ -1,106 +1,56 @@
 #!/usr/bin/env node
 import 'dotenv/config';
 import { Command } from 'commander';
-import { readFileSync } from 'fs';
-import { join } from 'path';
-import { FormatterAgent } from './agents/formatter/index.js';
-import { WorkspaceManager } from './core/workspace/index.js';
-import { MemoryStore } from './core/storage/index.js';
-import type { StorageConfig } from './core/storage/index.js';
+import { readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { MemoryAgent } from './agent/index.js';
+import type { AgentConfig } from './agent/types.js';
+import { StagingManager } from './core/staging/staging.js';
 
 const program = new Command();
 
 program
   .name('octomem')
   .description('Octomem - Universal Agent Memory System')
-  .version('0.0.1');
+  .version('0.0.2');
 
-// ─── Helper ───
+// ─── Helpers ───
 
-function getStoreConfig(dbPath?: string): StorageConfig {
+function getAgentConfig(dbPath?: string, rootDir?: string): AgentConfig {
   return {
-    dbPath: dbPath ?? join(process.cwd(), 'memory', 'index.db'),
-    embedding: {
-      baseUrl: process.env.EMBEDDING_BASE_URL || process.env.LLM_BASE_URL,
-      apiKey: process.env.EMBEDDING_API_KEY || process.env.OPENAI_API_KEY,
-      model: process.env.EMBEDDING_MODEL || 'text-embedding-3-small',
+    storage: {
+      dbPath: dbPath ?? join(process.cwd(), 'memory', 'index.db'),
+      embedding: {
+        baseUrl: process.env.EMBEDDING_BASE_URL || process.env.LLM_BASE_URL,
+        apiKey: process.env.EMBEDDING_API_KEY || process.env.OPENAI_API_KEY,
+        model: process.env.EMBEDDING_MODEL || 'text-embedding-3-small',
+      },
+    },
+    llm: {
+      baseUrl: process.env.LLM_BASE_URL,
+      apiKey: process.env.OPENAI_API_KEY,
+      model: process.env.LLM_MODEL || 'gpt-4o-mini',
+    },
+    paths: {
+      rootDir: rootDir ?? join(process.cwd(), 'memory'),
     },
   };
 }
-
-// ─── Format Command ───
-
-program
-  .command('format [file]')
-  .description('Format input content to markdown')
-  .option('--all', 'Process all pending files in workspace')
-  .option('--stdin', 'Read from stdin')
-  .action(async (file, options) => {
-    const agent = new FormatterAgent();
-    const workspaceManager = new WorkspaceManager();
-
-    try {
-      if (options.stdin) {
-        const content = readFileSync(0, 'utf-8');
-        const result = await agent.format({ content });
-        console.log(result.content);
-      } else if (options.all) {
-        const workspace = await workspaceManager.init('formatter');
-        const files = await workspaceManager.getPendingFiles(workspace);
-
-        if (files.length === 0) {
-          console.log('No pending files to process.');
-          return;
-        }
-
-        console.log(`Found ${files.length} pending file(s)`);
-
-        for (const filename of files) {
-          console.log(`\nProcessing: ${filename}`);
-
-          const content = await workspaceManager.readFile(workspace, 'pending', filename);
-          await workspaceManager.moveToProcessing(workspace, filename);
-
-          const result = await agent.format({ content });
-
-          const mdFilename = filename.replace(/\.[^.]+$/, '.md');
-          await workspaceManager.writeCompletedFile(workspace, mdFilename, result.content);
-
-          const { unlink } = await import('fs/promises');
-          await unlink(`${workspace.processing}/${filename}`);
-
-          console.log(`Completed: ${filename} → ${mdFilename}`);
-        }
-
-        console.log(`\nAll ${files.length} file(s) processed.`);
-      } else if (file) {
-        const content = readFileSync(file, 'utf-8');
-        const result = await agent.format({ content });
-        console.log(result.content);
-      } else {
-        console.error('Please provide a file, use --stdin, or --all');
-        process.exit(1);
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`Error: ${message}`);
-      process.exit(1);
-    }
-  });
 
 // ─── Init Command ───
 
 program
   .command('init')
-  .description('Initialize memory storage database')
+  .description('Initialize memory storage database and entities directory')
   .option('-d, --db <path>', 'Database file path')
+  .option('--root <dir>', 'Root data directory')
   .action(async (options) => {
     try {
-      const config = getStoreConfig(options.db);
-      const store = new MemoryStore(config);
-      await store.init();
-      console.log(`Memory storage initialized: ${config.dbPath}`);
-      store.close();
+      const config = getAgentConfig(options.db, options.root);
+      const agent = new MemoryAgent(config);
+      await agent.init();
+      console.log(`Memory storage initialized: ${config.storage.dbPath}`);
+      agent.close();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error(`Error: ${message}`);
@@ -112,33 +62,45 @@ program
 
 program
   .command('add <file>')
-  .description('Add a memory from a markdown file')
+  .description('Add a memory from a file')
   .option('-d, --db <path>', 'Database file path')
-  .option('-t, --tags <tags>', 'Comma-separated tags (e.g., architecture/agent,design)')
+  .option('--root <dir>', 'Root data directory')
+  .option('-t, --tags <tags>', 'Comma-separated tags')
   .option('--title <title>', 'Memory title')
+  .option('--source <source>', 'Source identifier')
+  .option('--skip-format', 'Skip format stage')
+  .option('--skip-validation', 'Skip validation stage')
+  .option('--auto-merge', 'Auto-merge overlapping memories')
   .action(async (file, options) => {
     try {
       const content = readFileSync(file, 'utf-8');
-      const config = getStoreConfig(options.db);
-      const store = new MemoryStore(config);
-      await store.init();
+      const config = getAgentConfig(options.db, options.root);
+      const agent = new MemoryAgent(config);
+      await agent.init();
 
       const tags = options.tags
         ? options.tags.split(',').map((t: string) => t.trim()).filter(Boolean)
         : undefined;
 
-      const memory = await store.addMemory({
+      const result = await agent.addMemory({
         content,
         title: options.title,
         tags,
-        source: 'user_input',
+        source: options.source ?? file,
+        skipFormat: options.skipFormat,
+        skipValidation: options.skipValidation,
+        autoMerge: options.autoMerge,
       });
 
-      console.log(`Memory added: ${memory.id}`);
-      if (memory.tags.length > 0) {
-        console.log(`Tags: ${memory.tags.join(', ')}`);
-      }
-      store.close();
+      console.log(`Memory added: ${result.memory.id}`);
+      console.log(`  Title: ${result.memory.title ?? 'N/A'}`);
+      console.log(`  Confidence: ${result.memory.confidence}`);
+      console.log(`  Tags: ${result.memory.tags.join(', ') || 'none'}`);
+      console.log(`  File: ${result.filePath}`);
+      if (result.merged) console.log('  Merged with existing memory');
+      if (result.conflicted) console.log('  Conflict detected');
+
+      agent.close();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error(`Error: ${message}`);
@@ -153,68 +115,39 @@ program
   .description('Search memories')
   .option('-d, --db <path>', 'Database file path')
   .option('-n, --limit <number>', 'Max results', '5')
+  .option('--tags <tags>', 'Filter by comma-separated tags')
   .action(async (query, options) => {
     try {
-      const config = getStoreConfig(options.db);
-      const store = new MemoryStore(config);
-      await store.init();
+      const config = getAgentConfig(options.db);
+      const agent = new MemoryAgent(config);
+      await agent.init();
 
-      const results = await store.search(query, {
+      const filterTags = options.tags
+        ? options.tags.split(',').map((t: string) => t.trim()).filter(Boolean)
+        : undefined;
+
+      const results = await agent.search({
+        query,
         maxResults: Number(options.limit),
-      } as Partial<import('./core/storage/types.js').SearchConfig>);
+        filterTags,
+      });
 
       if (results.length === 0) {
         console.log('No results found.');
-        store.close();
+        agent.close();
         return;
       }
 
       for (const result of results) {
-        console.log(`\n[${result.score.toFixed(3)}] Memory: ${result.memoryId}`);
-        console.log(`  Lines ${result.startLine}-${result.endLine}`);
+        const title = result.memory.title ?? 'Untitled';
+        console.log(`\n[${result.score.toFixed(3)}] ${title} (${result.memoryId})`);
         console.log(`  ${result.snippet}`);
-      }
-
-      store.close();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`Error: ${message}`);
-      process.exit(1);
-    }
-  });
-
-// ─── Chain Command ───
-
-program
-  .command('chain <id>')
-  .description('View memory iteration chain by chain_root_id')
-  .option('-d, --db <path>', 'Database file path')
-  .action(async (id, options) => {
-    try {
-      const config = getStoreConfig(options.db);
-      const store = new MemoryStore(config);
-      await store.init();
-
-      const chain = await store.getMemoryChain(id);
-
-      if (chain.length === 0) {
-        console.log(`No memories found for chain: ${id}`);
-        store.close();
-        return;
-      }
-
-      console.log(`Chain: ${id} (${chain.length} memories)\n`);
-      for (const memory of chain) {
-        const title = memory.title ?? 'Untitled';
-        const preview = memory.content.slice(0, 80).replace(/\n/g, ' ');
-        console.log(`  [${memory.status}] ${memory.createdAt} — ${title}`);
-        console.log(`    ${preview}...`);
-        if (memory.tags.length > 0) {
-          console.log(`    tags: ${memory.tags.join(', ')}`);
+        if (result.memory.tags.length > 0) {
+          console.log(`  Tags: ${result.memory.tags.join(', ')}`);
         }
       }
 
-      store.close();
+      agent.close();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error(`Error: ${message}`);
@@ -226,19 +159,35 @@ program
 
 program
   .command('conflicts')
-  .description('List pending conflicts')
+  .description('List or resolve pending conflicts')
   .option('-d, --db <path>', 'Database file path')
+  .option('--resolve <id>', 'Resolve a conflict by ID')
+  .option('--winner <memoryId>', 'Winner memory ID for conflict resolution')
   .action(async (options) => {
     try {
-      const config = getStoreConfig(options.db);
-      const store = new MemoryStore(config);
-      await store.init();
+      const config = getAgentConfig(options.db);
+      const agent = new MemoryAgent(config);
+      await agent.init();
 
-      const conflicts = await store.getPendingConflicts();
+      if (options.resolve) {
+        if (!options.winner) {
+          console.error('Please specify --winner <memoryId> when resolving.');
+          process.exit(1);
+        }
+        const result = await agent.resolveConflict({
+          conflictId: options.resolve,
+          hint: options.winner,
+        });
+        console.log(`Conflict resolved: ${result.winnerId}`);
+        agent.close();
+        return;
+      }
+
+      const conflicts = await agent.rawStore.getPendingConflicts();
 
       if (conflicts.length === 0) {
         console.log('No pending conflicts.');
-        store.close();
+        agent.close();
         return;
       }
 
@@ -251,7 +200,156 @@ program
         console.log();
       }
 
-      store.close();
+      agent.close();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`Error: ${message}`);
+      process.exit(1);
+    }
+  });
+
+// ─── Chain Command ───
+
+program
+  .command('chain <id>')
+  .description('View memory iteration chain')
+  .option('-d, --db <path>', 'Database file path')
+  .action(async (id, options) => {
+    try {
+      const config = getAgentConfig(options.db);
+      const agent = new MemoryAgent(config);
+      await agent.init();
+
+      const chain = await agent.rawStore.getMemoryChain(id);
+
+      if (chain.length === 0) {
+        console.log(`No memories found for chain: ${id}`);
+        agent.close();
+        return;
+      }
+
+      console.log(`Chain: ${id} (${chain.length} memories)\n`);
+      for (const memory of chain) {
+        const title = memory.title ?? 'Untitled';
+        const preview = memory.content.slice(0, 80).replace(/\n/g, ' ');
+        console.log(`  [${memory.status}] ${memory.createdAt} — ${title}`);
+        console.log(`    ${preview}...`);
+        if (memory.tags.length > 0) {
+          console.log(`    Tags: ${memory.tags.join(', ')}`);
+        }
+      }
+
+      agent.close();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`Error: ${message}`);
+      process.exit(1);
+    }
+  });
+
+// ─── Export Command ───
+
+program
+  .command('export [dir]')
+  .description('Export memories as md files')
+  .option('-d, --db <path>', 'Database file path')
+  .option('--root <dir>', 'Root data directory')
+  .option('--tags <tags>', 'Filter by comma-separated tags')
+  .option('--all', 'Include non-active memories')
+  .action(async (dir, options) => {
+    try {
+      const outputDir = dir ?? './export';
+      const config = getAgentConfig(options.db, options.root);
+      const agent = new MemoryAgent(config);
+      await agent.init();
+
+      const filterTags = options.tags
+        ? options.tags.split(',').map((t: string) => t.trim()).filter(Boolean)
+        : undefined;
+
+      const result = await agent.export({
+        outputDir: resolve(outputDir),
+        filterTags,
+        activeOnly: !options.all,
+      });
+
+      console.log(`Exported ${result.fileCount} file(s) to ${result.outputDir}`);
+      if (result.skipped > 0) {
+        console.log(`Skipped ${result.skipped} file(s)`);
+      }
+
+      agent.close();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`Error: ${message}`);
+      process.exit(1);
+    }
+  });
+
+// ─── Resume Command ───
+
+program
+  .command('resume')
+  .description('Resume interrupted staging jobs')
+  .option('--root <dir>', 'Root data directory')
+  .action(async (options) => {
+    try {
+      const rootDir = options.root ?? join(process.cwd(), 'memory');
+      const staging = new StagingManager(rootDir);
+      const jobs = staging.getIncompleteJobs();
+
+      if (jobs.length === 0) {
+        console.log('No incomplete jobs to resume.');
+        return;
+      }
+
+      console.log(`Found ${jobs.length} incomplete job(s):\n`);
+      for (const job of jobs) {
+        const completed = Object.entries(job.stages)
+          .filter(([, status]) => status === 'completed')
+          .map(([stage]) => stage);
+        console.log(`  Job: ${job.jobId}`);
+        console.log(`  Source: ${job.source ?? 'N/A'}`);
+        console.log(`  Current stage: ${job.currentStage}`);
+        console.log(`  Completed: ${completed.join(', ') || 'none'}`);
+        console.log(`  Created: ${job.createdAt}`);
+        console.log();
+      }
+
+      console.log('Resume is not yet automated. Re-run the original command to retry.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`Error: ${message}`);
+      process.exit(1);
+    }
+  });
+
+// ─── Tags Command ───
+
+program
+  .command('tags')
+  .description('List all tags')
+  .option('-d, --db <path>', 'Database file path')
+  .action(async (options) => {
+    try {
+      const config = getAgentConfig(options.db);
+      const agent = new MemoryAgent(config);
+      await agent.init();
+
+      const tags = await agent.rawStore.getTags();
+
+      if (tags.length === 0) {
+        console.log('No tags found.');
+        agent.close();
+        return;
+      }
+
+      console.log(`Tags (${tags.length}):\n`);
+      for (const tag of tags) {
+        console.log(`  ${tag.name} (${tag.count})`);
+      }
+
+      agent.close();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error(`Error: ${message}`);
