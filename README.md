@@ -1,6 +1,6 @@
 # Octomem
 
-**A self-consistent memory system for AI agents.**
+**A "self-consistent" memory system for AI agents.**
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-green.svg)](https://nodejs.org/)
@@ -11,11 +11,21 @@
 
 ## Why Octomem
 
-Most AI agent memory systems are just **databases** — write in, read out, done. The problem? Memories pile up. Contradictions accumulate. Overlapping entries grow stale. Nobody is *auditing for consistency*.
+Octomem is inspired by the **octopus brain**: 9 brains (1 central + 8 arms), distributed yet self-consistent.
 
-Octomem is inspired by the **octopus brain**: 9 brains (1 central + 8 arms), distributed yet self-consistent. A memory system that doesn't just store — it **maintains consistency**.
+Most AI agent memory systems do one thing: **store and retrieve**. Write in, read out, done.
 
-### What makes it different
+The problem? Memories pile up. Contradictions accumulate. Duplicates keep growing. What agents are facing is **memory chaos that leads to a split personality**.
+
+I want my agent to have its own worldview — its own take on things — not a bot that says "both sides are fine."
+
+## Highlights
+
+- **Markdown as the source of truth** — your memories are always readable, exportable, and portable.
+- **Full CLI support** — because this is an agent memory system, don't forget that.
+- **SQLite + vectors + segmentation** — looks familiar? Double the OpenClaw friendliness!
+
+## Comparison
 
 | | Storage & Search | Contradiction Detection | Similarity Merge | Confidence Tracking | Self-Iteration |
 |---|:-:|:-:|:-:|:-:|:-:|
@@ -26,11 +36,15 @@ Octomem is inspired by the **octopus brain**: 9 brains (1 central + 8 arms), dis
 
 The core insight: **validating before writing is more important than retrieving after storing**.
 
+> PS: Of course, "dreaming" — the romantically packaged periodic cleanup — Octomem will do that too.
+
 ---
 
 ## How It Works
 
-**Your memories are never locked in a proprietary format.** Markdown files are the permanent, human-readable source of truth. SQLite is just a search index.
+**Your memories are never locked in a proprietary format.**
+
+Markdown files are the permanent, human-readable archive. The database is just a search index.
 
 ```
 Input → Format → Structurize → Validate → Merge → Index
@@ -47,7 +61,7 @@ Before any memory is stored, Octomem searches existing memories for similar cont
 - **OVERLAPS** → trigger merge with existing memory
 - **INDEPENDENT** → safe to store
 
-This means your memory base stays **clean and consistent** — no duplicates, no contradictions.
+This means your memory base stays **clean and consistent** — no duplicates, no contradictions. Conflicting information gets caught at the door.
 
 ### Dual-layer storage
 
@@ -56,7 +70,7 @@ This means your memory base stays **clean and consistent** — no duplicates, no
 | **Markdown files** | `memory/entities/{tag}/` | Permanent, human-readable, portable |
 | **SQLite index** | `memory/index.db` | Fast search (FTS5 + vector) |
 
-Export = copy markdown files. Database corrupted? Run `reindex`.
+Export = copy markdown files. Database corrupted? Rebuild the index.
 
 ### Confidence tracking
 
