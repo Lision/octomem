@@ -38,6 +38,18 @@ The core insight: **validating before writing is more important than retrieving 
 
 > PS: Of course, "dreaming" — the romantically packaged periodic cleanup — Octomem will do that too.
 
+### vs memory-lancedb
+
+| | memory-lancedb | Octomem |
+|---|---|---|
+| **Storage** | LanceDB vector store | SQLite + sqlite-vec + FTS5 |
+| **Search** | Pure vector search | Hybrid (vector + keyword + MMR) |
+| **Write** | Direct store, no processing | Pipeline: format → structurize → validate → merge → index |
+| **Dedup** | None | Overlap detection + auto merge |
+| **Contradiction** | None | Conflict detection + tracking |
+| **Confidence** | None | Per-memory confidence score |
+| **Resolution** | `memory_forget` (delete) | `resolveConflict` (intelligent resolution) |
+
 ---
 
 ## How It Works
