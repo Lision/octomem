@@ -115,11 +115,8 @@ export class MemoryStore {
     const textToEmbed = input.summary ?? input.content;
     const embedding = await this.embedding.embed(textToEmbed);
 
-    // Resolve tags
-    let tags: string[] = [];
-    if (input.tags && input.tags.length > 0) {
-      tags = await this.tagService!.resolveTags(input.tags);
-    }
+    // Use tags directly — callers (e.g. pipeline) are responsible for resolving tags
+    const tags = input.tags ?? [];
 
     // Insert memory
     db.prepare(
