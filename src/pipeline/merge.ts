@@ -104,7 +104,7 @@ export async function merge(
       summary: parsed.summary,
       keyPoints: parsed.keyPoints,
       tags: parsed.tags,
-      confidence: Math.max(0.1, Math.min(0.95, parsed.confidence)),
+      confidence: Math.round(Math.max(0.1, Math.min(0.95, parsed.confidence)) * 100) / 100,
     },
     supersededIds: memories.map((m) => m.id),
     reason: parsed.reason,

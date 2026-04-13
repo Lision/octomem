@@ -31,7 +31,7 @@ function buildFrontMatter(memory: Memory): string {
     lines.push(...memory.tags.map((t) => `  - "${t}"`));
   }
 
-  lines.push(`confidence: ${memory.confidence}`);
+  lines.push(`confidence: ${Math.round(memory.confidence * 100) / 100}`);
   lines.push(`status: ${memory.status}`);
   lines.push(`source: "${memory.source ?? 'user_input'}"`);
   lines.push(`createdAt: ${memory.createdAt}`);

@@ -129,7 +129,7 @@ export async function validate(
   if (contradictions.length === 0 && overlaps.length > 0) {
     confidence += 0.05;
   }
-  confidence = Math.max(0.1, Math.min(0.95, confidence));
+  confidence = Math.round(Math.max(0.1, Math.min(0.95, confidence)) * 100) / 100;
 
   return {
     valid: contradictions.length === 0,

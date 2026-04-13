@@ -21,7 +21,7 @@ function buildFrontMatter(input: IndexInput, id: string, createdAt: string): str
     ...input.keyPoints.map((p) => `  - "${p.replace(/"/g, '\\"')}"`),
     `tags:`,
     ...input.tags.map((t) => `  - "${t}"`),
-    `confidence: ${input.confidence}`,
+    `confidence: ${Math.round(input.confidence * 100) / 100}`,
     `source: "${input.source ?? 'user_input'}"`,
     `createdAt: ${createdAt}`,
   ];
