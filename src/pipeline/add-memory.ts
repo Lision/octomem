@@ -153,16 +153,16 @@ export async function addMemory(
       await store.updateMemory(id, { status: 'superseded' });
     }
 
-    // Create conflicts if needed
+    // Create conflict if needed — one conflict for all contradictions
     if (conflicted) {
       const validated = JSON.parse(staging.readStageOutput(manifest.jobId, 'validate')!);
-      for (const c of validated.contradictions) {
-        await store.createConflict(
-          indexed.memory.id,
-          [c.existingMemoryId],
-          c.conflictingPoints.join('; '),
-        );
-      }
+      const existingIds = validated.contradictions.map((c: any) => c.existingMemoryId);
+      const reasons = validated.contradictions.flatMap((c: any) => c.conflictingPoints ?? []);
+      await store.createConflict(
+        indexed.memory.id,
+        existingIds,
+        reasons.join('; '),
+      );
     }
 
     // Cleanup staging
