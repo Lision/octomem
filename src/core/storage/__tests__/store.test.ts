@@ -154,6 +154,7 @@ class TestStore {
     if (updates.title !== undefined) { setClauses.push('title = ?'); values.push(updates.title); }
     if (updates.content !== undefined) { setClauses.push('content = ?'); values.push(updates.content); }
     if (updates.status !== undefined) { setClauses.push('status = ?'); values.push(updates.status); }
+    if (updates.confidence !== undefined) { setClauses.push('confidence = ?'); values.push(updates.confidence); }
     if (updates.chainRootId !== undefined) { setClauses.push('chain_root_id = ?'); values.push(updates.chainRootId); }
 
     values.push(id);
@@ -193,15 +194,16 @@ class TestStore {
     return memories;
   }
 
-  async createConflict(memoryIds: string[], reason: string): Promise<Conflict> {
+  async createConflict(newMemoryId: string, existingMemoryIds: string[], reason: string): Promise<Conflict> {
     const id = generateId();
     const now = new Date().toISOString();
+    const memoryIds = [newMemoryId, ...existingMemoryIds];
 
     this.db.prepare(
       `INSERT INTO conflicts (id, memory_ids, reason, status, created_at) VALUES (?, ?, ?, 'pending', ?)`,
     ).run(id, JSON.stringify(memoryIds), reason, now);
 
-    for (const mid of memoryIds) {
+    for (const mid of existingMemoryIds) {
       await this.updateMemory(mid, { status: 'conflict' });
     }
 
@@ -239,7 +241,9 @@ class TestStore {
       if (mid === winnerId) {
         await this.updateMemory(mid, { status: 'active' });
       } else {
-        await this.updateMemory(mid, { status: 'superseded' });
+        const loser = await this.getMemory(mid);
+        const newConfidence = Math.round(Math.max(0.1, (loser?.confidence ?? 0.8) - 0.3) * 100) / 100;
+        await this.updateMemory(mid, { status: 'superseded', confidence: newConfidence });
       }
     }
   }
@@ -253,8 +257,8 @@ class TestStore {
     ).run(conflictId);
 
     const memoryIds = JSON.parse(conflict.memory_ids) as string[];
-    for (const mid of memoryIds) {
-      await this.updateMemory(mid, { status: 'conflict' });
+    for (let i = 1; i < memoryIds.length; i++) {
+      await this.updateMemory(memoryIds[i], { status: 'conflict' });
     }
   }
 }
@@ -461,7 +465,8 @@ describe('MemoryStore Integration', () => {
       const mem2 = await store.addMemory({ content: 'Conflicting view B' });
 
       const conflict = await store.createConflict(
-        [mem1.id, mem2.id],
+        mem1.id,
+        [mem2.id],
         'Contradictory information about the same topic',
       );
 
@@ -470,13 +475,13 @@ describe('MemoryStore Integration', () => {
 
       const updated1 = await store.getMemory(mem1.id);
       const updated2 = await store.getMemory(mem2.id);
-      expect(updated1!.status).toBe('conflict');
+      expect(updated1!.status).toBe('active');
       expect(updated2!.status).toBe('conflict');
     });
 
     it('should list pending conflicts', async () => {
       const mem = await store.addMemory({ content: 'Conflict source' });
-      await store.createConflict([mem.id], 'Test reason');
+      await store.createConflict(mem.id, [], 'Test reason');
 
       const pending = await store.getPendingConflicts();
       expect(pending.length).toBe(1);
@@ -488,7 +493,8 @@ describe('MemoryStore Integration', () => {
       const mem2 = await store.addMemory({ content: 'Version B' });
 
       const conflict = await store.createConflict(
-        [mem1.id, mem2.id],
+        mem1.id,
+        [mem2.id],
         'Duplicate',
       );
 
@@ -498,6 +504,7 @@ describe('MemoryStore Integration', () => {
       const resolved2 = await store.getMemory(mem2.id);
       expect(resolved1!.status).toBe('active');
       expect(resolved2!.status).toBe('superseded');
+      expect(resolved2!.confidence).toBe(0.5);
 
       const pending = await store.getPendingConflicts();
       expect(pending).toEqual([]);
@@ -508,7 +515,8 @@ describe('MemoryStore Integration', () => {
       const mem2 = await store.addMemory({ content: 'Version B' });
 
       const conflict = await store.createConflict(
-        [mem1.id, mem2.id],
+        mem1.id,
+        [mem2.id],
         'Needs re-evaluation',
       );
 
@@ -517,7 +525,7 @@ describe('MemoryStore Integration', () => {
 
       const reopened1 = await store.getMemory(mem1.id);
       const reopened2 = await store.getMemory(mem2.id);
-      expect(reopened1!.status).toBe('conflict');
+      expect(reopened1!.status).toBe('active');
       expect(reopened2!.status).toBe('conflict');
 
       const pending = await store.getPendingConflicts();

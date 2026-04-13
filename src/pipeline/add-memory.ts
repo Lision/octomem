@@ -158,7 +158,8 @@ export async function addMemory(
       const validated = JSON.parse(staging.readStageOutput(manifest.jobId, 'validate')!);
       for (const c of validated.contradictions) {
         await store.createConflict(
-          [indexed.memory.id, c.existingMemoryId],
+          indexed.memory.id,
+          [c.existingMemoryId],
           c.conflictingPoints.join('; '),
         );
       }

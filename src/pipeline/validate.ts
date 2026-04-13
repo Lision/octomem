@@ -118,14 +118,8 @@ export async function validate(
     }
   }
 
-  // Calculate confidence
+  // Confidence is unaffected by contradictions — penalty is applied on conflict resolution
   let confidence = 0.8;
-  for (const c of contradictions) {
-    if (c.severity === 'high') confidence -= 0.3;
-    else if (c.severity === 'medium') confidence -= 0.15;
-    else confidence -= 0.05;
-  }
-  // Overlaps without contradiction boost slightly
   if (contradictions.length === 0 && overlaps.length > 0) {
     confidence += 0.05;
   }

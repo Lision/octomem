@@ -318,17 +318,18 @@ export class MemoryStore {
 
   // ─── Conflicts ───
 
-  async createConflict(memoryIds: string[], reason: string): Promise<Conflict> {
+  async createConflict(newMemoryId: string, existingMemoryIds: string[], reason: string): Promise<Conflict> {
     const db = this.ensureInit();
     const id = generateId();
     const now = new Date().toISOString();
+    const memoryIds = [newMemoryId, ...existingMemoryIds];
 
     db.prepare(
       `INSERT INTO conflicts (id, memory_ids, reason, status, created_at) VALUES (?, ?, ?, 'pending', ?)`,
     ).run(id, JSON.stringify(memoryIds), reason, now);
 
-    // Mark conflicting memories
-    for (const mid of memoryIds) {
+    // New memory stays active; existing memories are flagged for review
+    for (const mid of existingMemoryIds) {
       await this.updateMemory(mid, { status: 'conflict' });
     }
 
@@ -367,12 +368,14 @@ export class MemoryStore {
       `UPDATE conflicts SET status = 'resolved', resolution = ?, resolution_type = ?, winner_id = ?, resolved_at = ? WHERE id = ?`,
     ).run(resolution, type, winnerId, now, conflictId);
 
-    // Winner stays active (or becomes active), others become superseded
+    // Winner stays active; losers become superseded with reduced confidence
     for (const mid of memoryIds) {
       if (mid === winnerId) {
         await this.updateMemory(mid, { status: 'active' });
       } else {
-        await this.updateMemory(mid, { status: 'superseded' });
+        const loser = await this.getMemory(mid);
+        const newConfidence = Math.round(Math.max(0.1, (loser?.confidence ?? 0.8) - 0.3) * 100) / 100;
+        await this.updateMemory(mid, { status: 'superseded', confidence: newConfidence });
       }
     }
   }
@@ -388,10 +391,10 @@ export class MemoryStore {
       `UPDATE conflicts SET status = 'pending', resolution = NULL, resolution_type = NULL, winner_id = NULL, resolved_at = NULL WHERE id = ?`,
     ).run(conflictId);
 
-    // Re-mark memories as conflict
+    // Re-mark existing memories as conflict; new memory (first in array) stays active
     const memoryIds = JSON.parse(conflict.memory_ids) as string[];
-    for (const mid of memoryIds) {
-      await this.updateMemory(mid, { status: 'conflict' });
+    for (let i = 1; i < memoryIds.length; i++) {
+      await this.updateMemory(memoryIds[i], { status: 'conflict' });
     }
   }
 
