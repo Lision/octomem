@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import 'dotenv/config';
 import { Command } from 'commander';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { MemoryAgent } from './agent/index.js';
 import type { AgentConfig } from './agent/types.js';
@@ -16,10 +17,18 @@ program
 
 // ─── Helpers ───
 
+function resolveRootDir(explicit?: string): string {
+  if (explicit) return explicit;
+  const localMemory = join(process.cwd(), 'memory');
+  if (existsSync(localMemory)) return localMemory;
+  return join(homedir(), '.octomem');
+}
+
 function getAgentConfig(dbPath?: string, rootDir?: string): AgentConfig {
+  const resolved = resolveRootDir(rootDir);
   return {
     storage: {
-      dbPath: dbPath ?? join(process.cwd(), 'memory', 'index.db'),
+      dbPath: dbPath ?? join(resolved, 'index.db'),
       embedding: {
         baseUrl: process.env.EMBEDDING_BASE_URL || process.env.LLM_BASE_URL,
         apiKey: process.env.EMBEDDING_API_KEY || process.env.OPENAI_API_KEY,
@@ -32,7 +41,7 @@ function getAgentConfig(dbPath?: string, rootDir?: string): AgentConfig {
       model: process.env.LLM_MODEL || 'gpt-4o-mini',
     },
     paths: {
-      rootDir: rootDir ?? join(process.cwd(), 'memory'),
+      rootDir: resolved,
     },
   };
 }
@@ -294,7 +303,7 @@ program
   .option('--root <dir>', 'Root data directory')
   .action(async (options) => {
     try {
-      const rootDir = options.root ?? join(process.cwd(), 'memory');
+      const rootDir = resolveRootDir(options.root);
       const staging = new StagingManager(rootDir);
       const jobs = staging.getIncompleteJobs();
 
