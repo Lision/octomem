@@ -154,15 +154,17 @@ export async function addMemory(
     }
 
     // Create conflict if needed — one conflict for all contradictions
+    let conflictId: string | undefined;
     if (conflicted) {
       const validated = JSON.parse(staging.readStageOutput(manifest.jobId, 'validate')!);
       const existingIds = validated.contradictions.map((c: any) => c.existingMemoryId);
       const reasons = validated.contradictions.flatMap((c: any) => c.conflictingPoints ?? []);
-      await store.createConflict(
+      const conflict = await store.createConflict(
         indexed.memory.id,
         existingIds,
         reasons.join('; '),
       );
+      conflictId = conflict.id;
     }
 
     // Cleanup staging
@@ -175,6 +177,7 @@ export async function addMemory(
       stages,
       merged,
       conflicted,
+      conflictId,
     };
   } catch (error) {
     // Leave staging for resume

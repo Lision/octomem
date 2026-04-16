@@ -46,6 +46,16 @@ function getAgentConfig(dbPath?: string, rootDir?: string): AgentConfig {
   };
 }
 
+function readStdin(): Promise<string> {
+  return new Promise((res, reject) => {
+    let data = '';
+    process.stdin.setEncoding('utf-8');
+    process.stdin.on('data', (chunk) => { data += chunk; });
+    process.stdin.on('end', () => res(data));
+    process.stdin.on('error', reject);
+  });
+}
+
 // ─── Init Command ───
 
 program
@@ -70,19 +80,33 @@ program
 // ─── Add Command ───
 
 program
-  .command('add <file>')
-  .description('Add a memory from a file')
+  .command('add [file]')
+  .description('Add a memory from file, --text, or stdin')
   .option('-d, --db <path>', 'Database file path')
   .option('--root <dir>', 'Root data directory')
   .option('-t, --tags <tags>', 'Comma-separated tags')
   .option('--title <title>', 'Memory title')
   .option('--source <source>', 'Source identifier')
+  .option('--text <string>', 'Direct text content')
+  .option('--stdin', 'Read content from stdin')
   .option('--skip-format', 'Skip format stage')
   .option('--skip-validation', 'Skip validation stage')
   .option('--auto-merge', 'Auto-merge overlapping memories')
   .action(async (file, options) => {
     try {
-      const content = readFileSync(file, 'utf-8');
+      let content: string;
+      if (options.text) {
+        content = options.text;
+      } else if (options.stdin) {
+        content = await readStdin();
+      } else if (file) {
+        content = readFileSync(file, 'utf-8');
+      } else {
+        console.error('Provide a file, --text "content", or pipe via --stdin');
+        process.exit(1);
+        return;
+      }
+
       const config = getAgentConfig(options.db, options.root);
       const agent = new MemoryAgent(config);
       await agent.init();
@@ -95,7 +119,7 @@ program
         content,
         title: options.title,
         tags,
-        source: options.source ?? file,
+        source: options.source ?? file ?? 'cli-text',
         skipFormat: options.skipFormat,
         skipValidation: options.skipValidation,
         autoMerge: options.autoMerge,
@@ -107,7 +131,7 @@ program
       console.log(`  Tags: ${result.memory.tags.join(', ') || 'none'}`);
       console.log(`  File: ${result.filePath}`);
       if (result.merged) console.log('  Merged with existing memory');
-      if (result.conflicted) console.log('  Conflict detected');
+      if (result.conflicted) console.log(`  Conflict detected: ${result.conflictId}`);
 
       agent.close();
     } catch (error) {

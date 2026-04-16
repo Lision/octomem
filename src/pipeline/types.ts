@@ -204,6 +204,8 @@ export interface AddMemoryOutput {
   merged: boolean;
   /** Whether a conflict was created */
   conflicted: boolean;
+  /** ID of the conflict record (when conflicted) */
+  conflictId?: string;
 }
 
 // ─── batchImport() ───
