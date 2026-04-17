@@ -143,15 +143,13 @@ EMBEDDING_MODEL=bge-m3
 npx octomem init
 
 # Add a memory
-echo "# Rust vs Go\nRust prioritizes safety, Go prioritizes simplicity." > memo.md
-npx octomem add memo.md
+npx octomem add --text "Rust prioritizes safety, Go prioritizes simplicity."
 
 # Search
 npx octomem search "programming languages"
 
 # Add a similar memory — watch merge kick in
-echo "# Go vs Rust\nGo is simpler, Rust is safer but steeper learning curve." > memo2.md
-npx octomem add memo2.md
+npx octomem add --text "Go is simpler, Rust is safer but steeper learning curve."
 
 # Check for conflicts
 npx octomem conflicts
@@ -167,7 +165,7 @@ npx octomem tags
 | Command | Description |
 |---|---|
 | `octomem init` | Initialize memory database and entities directory |
-| `octomem add <file>` | Add a memory from file |
+| `octomem add [file]` | Add a memory from file, `--text`, or stdin |
 | `octomem search <query>` | Semantic search across memories |
 | `octomem conflicts` | List (or resolve) pending conflicts |
 | `octomem tags` | List all tags with counts |
